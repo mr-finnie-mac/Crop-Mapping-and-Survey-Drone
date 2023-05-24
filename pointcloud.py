@@ -11,6 +11,10 @@ from config import *
 import copy
 from sous import *
 import random
+from typing import List
+from scipy.spatial.distance import cdist
+
+from depthmap import Depthmap
 
 # Create a custom colormap with 100 colors
 custom_cmap = ['#8B4513', '#3F3F3F', '#7F7F7F', '#BFBFBF', '#FFFFFF', '#FF0000', '#FFA500', '#FFFF00', '#008000', '#0000FF',
@@ -33,6 +37,200 @@ custom_cmap = ['#8B4513', '#3F3F3F', '#7F7F7F', '#BFBFBF', '#FFFFFF', '#FF0000',
           '#DAA520', '#1E90FF', '#FF69B4', '#9370DB', '#CD853F', '#FFB6C1', '#FAFAD2', '#90EE90', '#808000', '#BA55D3',
           '#8B0000', '#008080', '#F5DEB3', '#EEE8AA']
 rgb_colors = [plt_colors.to_rgb(hex_color) for hex_color in custom_cmap]
+
+class PointCloud():
+    def __init__(self, rgbd, mission, id):
+        self.id = id
+        self.rgbd = rgbd
+        self.cloud = o3d.geometry.PointCloud()
+        self.clusters = None
+        self.plants = None
+        self.ground = None
+        self.exportPath = None
+        self.depthmap = None
+        self.mission = mission
+        self.camera_params = None
+        self.colour = None
+
+    def setDepthmap(self, depthmap: Depthmap):
+        self.depthmap = depthmap
+
+    def generateDepthMap(self, imagePath, exportPath, params, left, right):
+        self.camera_params = Depthmap(self.id, imagePath, exportPath, self.mission, params, left, right)
+
+    def makeRGBD(self, useWLS, depthmap):
+        # Convert ndarray color image and depth images to O3D rgbd
+        if depthmap is False:
+            colour = o3d.geometry.Image((self.depthmap.rect_Left).astype(np.uint8))
+            if useWLS:
+                depth = o3d.geometry.Image((self.depthmap.wls).astype(np.uint8))
+            else:
+                depth = o3d.geometry.Image((self.depthmap.disaprity).astype(np.uint8))
+        else:
+            colour = o3d.geometry.Image((self.colour).astype(np.uint8))
+            depth = o3d.geometry.Image((depthmap).astype(np.uint8)) 
+        self.rgbd = o3d.geometry.RGBDImage.create_from_color_and_depth(colour, depth)
+
+    def loadFile(self, file_path):
+        self.cloud = o3d.io.read_point_cloud(file_path)
+    
+    def saveFile(self, file_path):
+        o3d.io.write_point_cloud(file_path, self.points)
+
+    def generateCamaraParams(self):
+        self.camera_params = CameraExtIntrinsics(self.id)
+    
+    # Make the pointcloud
+    def generate(self):
+        self.cloud = o3d.geometry.PointCloud.create_from_rgbd_image(self.rgbd, intrinsic=self.camera_params.intMat, extrinsic=self.camera_params.extMat)
+
+    # Configure
+    def reverseScale(self):
+        self.cloud.scale(-1.0, center = self.cloud.get_center()) # inverting the scale so points are not wrong way round
+
+    def conditionPointcloud(self, useDepthShift):
+        self.cloud.scale(1 / np.max(self.cloud.get_max_bound() - self.cloud.get_min_bound()), center=self.cloud.get_center())
+        if useDepthShift:
+            self.cloud.colors = o3d.utility.Vector3dVector(np.random.uniform(0, 1, size=(2000, 3))) # enable for blue-red depth colour shift
+
+    def observeCloud(self):
+        o3d.visualization.draw_geometries([self.cloud])
+
+    def makeVoxel(self):
+        self.voxels = o3d.geometry.VoxelGrid.create_from_point_cloud(self.cloud, voxel_size=0.005)
+
+    def downsample(self):
+        self.cloud = self.cloud.uniform_down_sample(every_k_points=K_POINTS)
+
+
+class CameraExtIntrinsics():
+    def __init__(self, id):
+        self.id = id
+        self.extFile = cv.FileStorage.open(CAMERA_INTRINSICS, cv.FileStorage_READ)
+        self.intFile = cv.FileStorage.open(CAMERA_EXTRINSICS, cv.FileStorage_READ)
+        self.extMat = np.asarray(self.extFile.getNode('mx').mat())
+        self.intMat = np.asarray(self.intFile.getNode('mx').mat())
+
+    def updateValues(self, extFile, intFile):
+        self.extFile = extFile
+        self.intFile - intFile
+
+class PointcloudSet():
+    def __init__(self, id, mission):
+        self.id = id
+        self.mission = mission
+        self.set = []
+        self.map = None
+        self.crops = []
+        self.ground = []
+
+    def addPointclouds(self, set: List[PointCloud]):
+        for pcd in set:
+            self.set.append(pcd)
+
+    def alignMembersICP(self, threshold=DEFAULT_ICP_THRESHOLD, trans_init=np.asarray([[1., 0., 0., 0.], [0., 1., 0., 0.], [0., 0., 1., 0.], [0., 0., 0., 1.]])):
+        target = self.set[0]
+        for pcd in self.set[1:]:
+            reg = o3d.pipelines.registration.registration_icp(pcd, target, threshold, trans_init, o3d.pipelines.registration.TransformationEstimationPointToPoint())
+            # observe_pointcloud(pcd)
+            # draw_registration_result(pcd, target, reg.transformation)
+        self.map = target
+
+    def observeCrops(self):
+        o3d.visualization.draw_geometries(self.crops)
+
+    def findCropsDBSCAN(self):
+        with o3d.utility.VerbosityContextManager(
+            o3d.utility.VerbosityLevel.Debug) as cm:
+            labels = np.array(
+                self.map.cluster_dbscan(eps=DBSCAN_EPS, min_points=DBSCAN_MIN_POINTS, print_progress=True))
+       # Create a list of segmented point clouds
+        pcd_list = []
+        for i in np.unique(labels):
+            points = np.asarray(self.map.points)[labels == i]
+            pcd_cluster = o3d.geometry.PointCloud()
+            pcd_cluster.points = o3d.utility.Vector3dVector(points)
+            pcd_list.append(pcd_cluster)
+        self.ground = pcd_list[0]
+        self.crops = pcd_list[1:]
+
+class PointcloudAnalysis():
+    def __init__(self, id, mission):
+        self.id = id
+        self.mission = mission
+        self.pointcloud_set = None
+        self.crops = [] # clusters
+        self.density = None # how close together the clusters are
+        self.average_height = None
+
+    def addSet(self, set):
+        self.pointcloud_set = PointcloudSet(self.id, self.mission)
+        self.pointcloud_set.addPointclouds(set)
+        self.pointcloud_set.findCropsDBSCAN()
+    
+    def addCrop(self, crop):
+        # example = Crop(self.id, self.mission)
+        # self.crop = example
+        self.crops.append(crop)
+
+    def calculateAverageHeight(self):
+        avgs = []
+        for crop in self.crops:
+            avgs.append(crop.height)
+        self.average_height = np.mean(avgs)
+
+    def calculateDensity(self):
+        # make list of center values for each crop point cloud
+        center_values = []
+        for crop in self.crops:
+            center_values.append(crop.position)
+            print(crop.position)
+        centers = np.array(center_values)
+
+        # Calculate pairwise Euclidean distances between center points
+        distances = cdist(centers, centers, 'euclidean')
+
+        # Exclude self-distances (diagonal elements)
+        distances = distances[np.nonzero(~np.eye(distances.shape[0], dtype=bool))]
+
+        # Calculate average gap
+        average_gap = np.mean(distances)
+        print("Average gap between center points:", average_gap)
+        self.density = average_gap
+        
+
+
+
+class Crop():
+    def __init__(self, id, mission):
+        self.id = id
+        self.mission = mission
+        self.pointcloud = None
+        self.bounds_vector  = None
+        self.bounds = None
+        self.volume = None
+        self.height = None
+        self.position = None
+
+    def setPointcloud(self, pcd):
+        self.pointcloud = pcd
+
+    def measureBounds(self):
+        self.bounds_vector = self.pointcloud.get_axis_aligned_bounding_box().get_box_points() # measures bounds from the ground up
+        self.bounds = np.asarray(self.pointcloud.get_axis_aligned_bounding_box().get_box_points()) # measures bounds from the ground up
+    
+    def measureVolume(self):
+        self.volume = self.bounds.volume() # measures volume inside bounds
+
+    def measureHeight(self):
+        # Calculate the height along the z-axis
+        min_z = np.min(self.bounds[:, 2])
+        max_z = np.max(self.bounds[:, 2])
+        self.height = max_z - min_z
+
+    def getPosition(self):
+        self.position = self.pointcloud.get_center()
+        
 
 # construct pointcloud from depthmap and image path
 def make_rgbd(image_path, depth_path):
@@ -443,6 +641,96 @@ def process_mission(missionCode):
 
     # integrate scene
 
+def get_file_paths(directory):
+    file_paths = []
+    for filename in os.listdir(directory):
+        file_path = os.path.join(directory, filename)
+        if os.path.isfile(file_path) and filename.lower().endswith('.ply'):
+            file_paths.append(file_path)
+    return file_paths
+
+if __name__ == "__main__":
+    # pcdPath = 'blender/blender-models/alt/blendercrops_alt.ply'
+    pcdPath = 'blender/blender-models/alt/disected/'
+    # pcd = PointCloud("rgbd", "blender_alt", 21052023)
+    # pcd.reverseScale()
+    # pcd.conditionPointcloud(True)
+    # observe_pointcloud(pcd.cloud)
+    blend = PointCloud(None,"blender-og", 2)
+    depthmap = cv.imread("./outputs/depthmaps/disparity_image_blender-og.png")
+    srcL = cv.imread("./blender/older_images/left2.png")
+    blend.depthmap = depthmap
+    blend.colour  = srcL
+    blend.makeRGBD(False, depthmap=depthmap)
+    blend.cloud = convert_to_ply(blend.rgbd)
+
+    # blend.generate()
+    # blend.conditionPointcloud()
+    blend.observeCloud()
+    blend.downsample()
+    blend.cloud = cluster_statistical_outlier_removal(blend.cloud, True)
+    observe_pointcloud(pointcloud_clustering_segmentation(blend.cloud))
+    
+    # pointcloud_clustering_basic(blend.cloud)
+
+    crop = Crop(112358, "blender_alt")
+    pcd = PointCloud("rgbd", "blender_alt", 112358)
+    pcd.loadFile('blender/blender-models/alt/disected/blendercrops_alt_001.ply')
+    crop.setPointcloud(pcd.cloud)
+
+    crop.measureBounds()
+    print(crop.bounds)
+    crop.measureHeight()
+    print(crop.height)
+    crop.getPosition()
+    print(crop.position)
+
+    crop2 = Crop(112358, "blender_alt")
+    pcd2 = PointCloud("rgbd", "blender_alt", 112358)
+    pcd2.loadFile('blender/blender-models/alt/disected/blendercrops_alt_003.ply')
+    crop2.setPointcloud(pcd2.cloud)
+
+    crop2.measureBounds()
+    print(crop2.bounds)
+    crop2.measureHeight()
+    print(crop2.height)
+    crop2.getPosition()
+    print(crop2.position)
+
+    analysis = PointcloudAnalysis(112358, "blender_alt")
+    analysis.addCrop(crop)
+    analysis.addCrop(crop2)
+
+    analysis.calculateDensity()
+    analysis.calculateAverageHeight()
+    print(analysis.density)
+    print(analysis.average_height)
+    o3d.visualization.draw_geometries([pcd.cloud, pcd2.cloud])
+    
+
+    file_paths = get_file_paths(pcdPath)
+    pcdList = []
+    # Print the file paths
+    for file_path in file_paths:
+        pcd = PointCloud("rgbd", "blender_alt", 21052023)
+        pcd.loadFile(file_path)
+        pcd.reverseScale()
+        pcd.conditionPointcloud(True)
+        pcd.downsample()
+        # observe_pointcloud(pcd.cloud)
+        pcdList.append(pcd.cloud)
+        pcds = PointcloudSet(21052023, "blender_alt")
+
+    pcds.addPointclouds(pcdList)
+    print(pcds.set)
+    print(pcds.set[0])
+
+    pcds.alignMembersICP()
+    observe_pointcloud(pcds.map)
+
+    pcds.findCropsDBSCAN()
+
+    observe_pointcloud(pcds.observeCrops())
 
 
 

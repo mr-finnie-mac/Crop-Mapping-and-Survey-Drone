@@ -81,7 +81,7 @@ def map_environment(missionCode=getCurrentMS(),
                     right_camera=Camera(RIGHT_ID, RIGHT_DEVICE_ADDRESS, RIGHT_WIDTH, RIGHT_HEIGHT, RIGHT_FRAMERATE, IMAGE_DESTINATION)):
 
 
-    # image_list, depth_list = compute_stereo_mission_folder_to_image_and_depth(missionCode=missionCode, path="./active_data/", sgbm_preset=0, wls=True)
+    image_list, depth_list = compute_stereo_mission_folder_to_image_and_depth(missionCode=missionCode, path="./active_data/", sgbm_preset=0, wls=True)
     
     
     rgbd_list = generate_rgbd_pack_from_mission(missionCode=missionCode, path="./active_data/")#, image_list=image_list, depth_list=depth_list)

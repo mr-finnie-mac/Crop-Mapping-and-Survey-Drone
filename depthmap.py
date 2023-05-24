@@ -13,7 +13,8 @@ import os
 from keras_pipe import *
 from sous import *
 
-
+global debug_show
+debug_show = False
 tf.random.set_seed(123)
 
 pathToImage ='./img_sets/square_dataset/images/'
@@ -25,6 +26,124 @@ model_type = "MiDaS"
 # select a version of the MiDaS model
 # model_type = "DPT_Large"
 # model_type = "DPT_Hybrid"
+
+class StereoMatrix:
+    def __init__(self, filePath):
+        self.filePath = filePath
+        self.file = None
+        self.stereoMapL_x = None
+        self.stereoMapL_y = None
+        self.stereoMapR_x = None
+        self.stereoMapR_y = None
+
+    def getFile(self):
+        self.file = cv.FileStorage(self.filePath, cv.FILE_STORAGE_READ)
+
+    def makeMatrices(self):
+        self.stereoMapL_x = self.file.getNode("stereoMapL_x").mat()
+        self.stereoMapL_y = self.file.getNode("stereoMapL_y").mat()
+        self.stereoMapR_x = self.file.getNode('stereoMapR_x').mat()
+        self.stereoMapR_y = self.file.getNode('stereoMapR_y').mat()
+
+
+
+class Depthmap:
+    def __init__(self, id, imagePath, exportPath, mission, params, left, right):
+        # self.imagePath = imagePath
+        self.exportPath = exportPath
+        self.mission = mission
+        self.id = id
+        self.params = params
+        self.left = left
+        self.right = right
+        self.matrices = None
+        self.rect_Left = None
+        self.rect_Right = None
+        self.preset = None
+        self.disaprity = None
+        self.wls = None
+
+    
+    def getStereoParams(self):
+        self.matrices = StereoMatrix("./STEREO_PARAMS.xml") 
+        return self.matrices
+    def generate_depthmap(self):
+
+        # Applying stereo image rectification on the left image
+        self.rect_Left= cv.remap(self.left,
+                self.matrices.stereoMapL_x,
+                self.matrices.stereoMapL_y,
+                cv.INTER_LANCZOS4,
+                cv.BORDER_CONSTANT,
+                0)
+        
+        # Applying stereo image rectification on the right image
+        self.rect_Right =  cv.remap(self.right,
+                self.matrices.stereoMapR_x,
+                self.matrices.stereoMapR_y,
+                cv.INTER_LANCZOS4,
+                cv.BORDER_CONSTANT,
+                0)
+        
+        (minDisp, numDisp, blockSize, 
+         p1, p2, dispMaxDiff, prefilCap, 
+         uniqueRatio, speckWinSize, speckRange) = depthmap_presets(preset=self.params)
+        
+        stereo = cv.StereoSGBM_create(minDisparity=minDisp, numDisparities=numDisp, blockSize=blockSize, 
+                                  P1=p1, P2=p2, disp12MaxDiff=dispMaxDiff, preFilterCap=prefilCap, 
+                                  uniquenessRatio=uniqueRatio, speckleWindowSize=speckWinSize, speckleRange=speckRange)
+        disparity = stereo.compute(self.rect_Left, self.rect_Right)
+
+        leftMatcher = cv.StereoSGBM_create(minDisparity=minDisp, numDisparities=numDisp, blockSize=blockSize, 
+                                  P1=p1, P2=p2, disp12MaxDiff=dispMaxDiff, preFilterCap=prefilCap, 
+                                  uniquenessRatio=uniqueRatio, speckleWindowSize=speckWinSize, speckleRange=speckRange, mode=cv.STEREO_SGBM_MODE_SGBM_3WAY)
+        
+        rightMatcher = cv.ximgproc.createRightMatcher(leftMatcher)
+
+        leftDisp = leftMatcher.compute(self.rect_Left, self.rect_Right).astype(np.float32)/16
+        rightDisp = rightMatcher.compute(self.rect_Left, self.rect_Right).astype(np.float32)/16
+
+        sigma = 1.5
+        lmbda = 8000.0
+
+        # make WLS filter 
+        wlsFilter = cv.ximgproc.createDisparityWLSFilter(leftMatcher)
+        # wlsFilter = cv.ximgproc.createDisparityWLSFilterGeneric(False)
+        wlsFilter.setLambda(lmbda)
+        wlsFilter.setSigmaColor(sigma)
+        filteredDisparity = wlsFilter.filter(leftDisp, self.left, disparity_map_right=rightDisp)
+        # print("disparity image types (disparity, filtered)")
+        # print(type(disparity))
+        print(type(filteredDisparity))
+        print(disparity)
+
+        testName = ('_%s_%i_'%(self.mission, self.id))
+
+        # save depth image
+        cv.imwrite(("%s%s_%s.png"%(self.exportPath, "filtered_disparity_image", testName)), filteredDisparity)
+
+
+        # display images
+        fig, (ax1, ax2, ax3, ax4) = plt.subplots(nrows=1, ncols=4, figsize=(8, 3),
+                                            sharex=True, sharey=True)
+        for aa in (ax1, ax2, ax3, ax4):
+            aa.set_axis_off()
+        global debug_show
+        if  debug_show:
+            ax1.imshow(self.rect_Left, cmap='gray')
+            ax1.set_title('Left  image')
+            ax2.imshow(self.rect_Right, cmap='gray')
+            ax2.set_title('Right image')
+            ax3.imshow(disparity, cmap='gray')
+            ax3.set_title('Depth map')
+            ax4.imshow(filteredDisparity, cmap='jet')
+            ax4.set_title('Filtered depthmap (WLS)')
+            plt.savefig("%s%s_%s.jpeg"%(exportPath, "comparison", testName))
+            plt.show()
+
+        self.disaprity = disparity
+        self.wls = filteredDisparity
+
 
 def load_midas_model(model_type):
     """Load the chosen MiDaS model. Returns loaded transforms, model and device"""
@@ -70,9 +189,9 @@ def compute_depth_map(transform, midas, device, source_image, file_destination):
 
     return output
 
-def blender_specific_depthmap(imgL, imgR, output='./'):
-    imgL = cv.cvtColor(imgL, cv.COLOR_BGR2GRAY)
-    imgR = cv.cvtColor(imgR, cv.COLOR_BGR2GRAY)
+def blender_specific_depthmap(imgL, imgR, output='./', name=""):
+    # imgL = cv.cvtColor(imgL, cv.COLOR_BGR2GRAY)
+    # imgR = cv.cvtColor(imgR, cv.COLOR_BGR2GRAY)
     minDisp = 10
     numDisp = 96
     blockSize = 11
@@ -86,7 +205,8 @@ def blender_specific_depthmap(imgL, imgR, output='./'):
                                   P1=100, P2=1000, disp12MaxDiff=dispMaxDiff, preFilterCap=prefilCap, 
                                   uniquenessRatio=uniqueRatio, speckleWindowSize=speckWinSize, speckleRange=speckRange)
     disparity = stereo.compute(imgL,imgR)
-    plt.imshow(disparity)
+    # plt.imshow(disparity)
+    cv.imwrite(("%s%s_%s.png"%(output, "disparity_image", name)), disparity)
     return disparity
 
 def show_depth_map(depth_map, imageName):
@@ -553,15 +673,26 @@ if __name__ == "__main__":
     # stereo_depthmap_compute(leftPath='./active_data/images/woodland_bikepark_L.jpeg', rightPath='./active_data/images/woodland_bikepark_R.jpeg', outputPath="./active_data/", name="test4")
     # stereo_depthmap_compute(leftPath='./active_data/images/guitar_L.jpeg', rightPath='./active_data/images/guitar_R.jpeg', outputPath="./active_data/", name="test5")
     # compute_stereo_mission_folder_to_image_and_depth(missionCode="fins room", path="./active_data/", sgbm_preset=0)
-    intrinsic_stereo_depthmap_compute()
+    # intrinsic_stereo_depthmap_compute()
+    srcL = ("./blender/older_images/left2.png")
+    srcR = ("./blender/older_images/right2.png")
+    # srcL = cv.imread("./blender/older_images/left2.png")
+    # srcR = cv.imread("./blender/older_images/right2.png")
 
+    # blender_specific_depthmap(srcL, srcR, "./outputs/depthmaps/", name="blender-og")
+    intrinsic_stereo_depthmap_compute(srcL, srcR, "./outputs/depthmaps/", "blender-og")
+    d = Depthmap(1,"", "./outputs/depthmaps", "blender-og", 2, srcL, srcR)
+    d.getStereoParams()
+    d.matrices.getFile()
+    d.matrices.makeMatrices()
+    print(d.matrices.stereoMapL_x)
+
+    d.generate_depthmap()
     
 
     # stereo_depthmap_compute(leftPath='./active_data/images/tree1_L.jpeg', rightPath='./active_data/images/tree1_R.jpeg', outputPath="./active_data/", name="test6")
     # stereo_depthmap_compute(leftPath='./active_data/images/tree2_L.jpeg', rightPath='./active_data/images/tree2_R.jpeg', outputPath="./active_data/", name="test7")
     # stereo_depthmap_compute(leftPath='./active_data/images/guitar_L.jpeg', rightPath='./active_data/images/guitar_R.jpeg', outputPath="./active_data/", name="test8")
-#   src1 = cv.imread('%s%s%s'%(pathToImage, "1677066757881_L", IMAGE_TYPE))
-#   src2 = cv.imread('%s%s%s'%(pathToImage, "1677066757881_L", IMAGE_TYPE))
 
 #   load_model =  load_midas_model(model_type)
 #   transform = load_model[0]
