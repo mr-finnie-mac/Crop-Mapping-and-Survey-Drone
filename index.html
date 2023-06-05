@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <!-- <meta http-equiv="refresh" content="3"> -->
+    <meta name="description" content="CMSD web app">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        body {
+            font-family: 'Montserrat', sans-serif;
+        }
+        .image-container {
+            border: 2px solid #0e2284; /* Border color */
+            background-color: #7054ac; /* Background color */
+            padding: 20px; /* Padding around the image */
+            display: inline-block; /* Display images in a row */
+            margin: 10px; /* Margin between images */
+            border-radius: 15px;
+        }
+    </style>
+    <title>CMSD</title>
+</head>
+<body>
+    <h1>CROP MAPPING AND SURVEY DRONE</h1>
+    <h4>{{left_image_filename, right_image_filename}}</h4>
+    <div class="image-container">
+        <img id ='left' src="{{ url_for('static', filename=left_image_filename) }}" alt="left image not found" width="600" height="400">
+        <img id = 'right' src="{{ url_for('static', filename=right_image_filename) }}" alt="right image not found" width="600" height="400"><br>
+        <img id = 'depth' src="{{ url_for('static', filename=depth_image_filename) }}" alt="depth image not found" width="600" height="400">
+    
+        <button id="depth-button">Capture Depth</button>
+        
+        <!-- <form action="/capture-stereo" method="POST">
+            <button type="submit">Capture stereo</button>
+        </form> -->
+    </div>
+    <script>
+        function processButton() {
+          var button = document.getElementById("depth");
+          button.innerHTML = "Processing...";
+          button.disabled = true;
+      
+        }
+        $(document).ready(function() {
+            $('#depth-button').click(function() {
+                var button = document.getElementById("depth-button");
+                button.innerHTML = "Processing...";
+                button.disabled = true;
+                $.ajax({
+                    url: '/capture-depth',
+                    method: 'GET',
+                    success: function(response) {
+                        // Handle the response from the server
+                        console.log(response)
+                        var leftURL = response.left;
+                        var rightURL = response.right;
+                        var depthURL = response.depth;
+                        $('#left').attr('src', "{{ url_for('static', filename='') }}" + leftURL);
+                        $('#right').attr('src', "{{ url_for('static', filename='') }}" + rightURL);
+                        $('#depth').attr('src', "{{ url_for('static', filename='') }}" + depthURL);
+
+                        button.innerHTML = "Capture Depth";
+                        button.disabled = false;
+                    },
+                    error: function() {
+                        // Handle error, if any
+                        console.log('An error occurred during the AJAX request.');
+                    }
+                });
+            });
+        });
+      </script>
+</body>
+</html>

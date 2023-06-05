@@ -1,5 +1,7 @@
 # Configuration points
 TEST_NAME = "blender"
+TARGET_DIR = "./stereo_camera/demo_version/v1"
+
 
 # Output paths
 STEREO_OUT = "/stereo/"
@@ -11,14 +13,14 @@ DEPTH_OUT = "/depth/"
 # Stereo camera presets
 LEFT_ID = "L"
 LEFT_DEVICE_ADDRESS = "video3"
-LEFT_WIDTH = 1920
-LEFT_HEIGHT = 1080
+LEFT_WIDTH = 640 #1920
+LEFT_HEIGHT = 480 #1080
 LEFT_FRAMERATE = 30
 # LEFT_IMAGE_DESTINATION = "/home/user/transfer_folder/"
 RIGHT_ID = "R"
 RIGHT_DEVICE_ADDRESS = "video4"
-RIGHT_WIDTH = 1920
-RIGHT_HEIGHT = 1080
+RIGHT_WIDTH = 640 #1920
+RIGHT_HEIGHT = 480 #1080
 RIGHT_FRAMERATE = 30
 # RIGHT_IMAGE_DESTINATION = "/home/user/transfer_folder/"
 IMAGE_TYPE = ".png"

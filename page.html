@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="refresh" content="3">
+    <meta name="description" content="CMSD web app">
+    <style>
+        body {
+            font-family: 'Montserrat', sans-serif;
+        }
+        .image-container {
+            border: 2px solid #0e2284; /* Border color */
+            background-color: #7054ac; /* Background color */
+            padding: 20px; /* Padding around the image */
+            display: inline-block; /* Display images in a row */
+            margin: 10px; /* Margin between images */
+            border-radius: 15px;
+        }
+    </style>
+    <title>CMSD</title>
+</head>
+<body>
+    <h1>IMAGE DATA</h1>
+    <h4>{{left_image_filename, right_image_filename}}</h4>
+    <div class="image-container">
+        <img src="{{ url_for('static', filename=left_image_filename) }}" alt="left image not found" width="600" height="400">
+        <img src="{{ url_for('static', filename=right_image_filename) }}" alt="right image not found" width="600" height="400">
+    </div>
+    
+</body>
+</html>

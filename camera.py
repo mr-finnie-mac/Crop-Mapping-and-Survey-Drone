@@ -1,4 +1,4 @@
-import cv2
+import cv2 as cv
 import threading
 import numpy as np
 import time
@@ -22,9 +22,9 @@ def capture_image(imageNumber, device_addr, position):
             try:
                 destination = "/home/user/transfer_folder/" + str(position) + "_camera_"+str(imageNumber)+".jpeg"
                 capture_params = "v4l2src device=" + str(device_addr) + " ! video/x-raw, framerate=30/1,width=720, height=576 ! appsink"
-                camera = cv2.VideoCapture(capture_params, cv2.CAP_GSTREAMER)
+                camera = cv.VideoCapture(capture_params, cv.CAP_GSTREAMER)
                 ret, frame = camera.read()
-                cv2.imwrite(destination, frame)
+                cv.imwrite(destination, frame)
 
                 print("-- Image captured -- ")
                 print(time.time())
@@ -54,7 +54,7 @@ class Camera:
 
     def begin(self, capture_params):
         try:
-            self.video_capture = cv2.VideoCapture(capture_params, cv2.CAP_GSTREAMER)
+            self.video_capture = cv.VideoCapture(capture_params, cv.CAP_GSTREAMER)
             self.grabbed, self.frame = self.video_capture.read()
 
         except RuntimeError:
@@ -164,8 +164,8 @@ def runStereoCamera(left_camera, right_camera):
 
 
 def recordStereoVideo(duration, left_camera, right_camera):
-    left_result = cv2.VideoWriter(VIDEO_DESTINATION + left_camera.id + ".avi", cv2.VideoWriter_fourcc(*'MJPG'),FPS, (V_WIDTH, V_HEIGHT))
-    right_result = cv2.VideoWriter(VIDEO_DESTINATION + right_camera.id + ".avi", cv2.VideoWriter_fourcc(*'MJPG'),FPS, (V_WIDTH, V_HEIGHT))
+    left_result = cv.VideoWriter(VIDEO_DESTINATION + left_camera.id + ".avi", cv.VideoWriter_fourcc(*'MJPG'),FPS, (V_WIDTH, V_HEIGHT))
+    right_result = cv.VideoWriter(VIDEO_DESTINATION + right_camera.id + ".avi", cv.VideoWriter_fourcc(*'MJPG'),FPS, (V_WIDTH, V_HEIGHT))
     timer = 0
     while True:
         left_ret, left_image = left_camera.read()
@@ -188,7 +188,7 @@ def recordStereoVideo(duration, left_camera, right_camera):
     print("Recordings done!")
 
 def recordMonoVideo(duration, mono_camera):
-    mono_result = cv2.VideoWriter(VIDEO_DESTINATION + mono_camera.id + ".avi", cv2.VideoWriter_fourcc(*'MJPG'),FPS, (V_WIDTH, V_HEIGHT))
+    mono_result = cv.VideoWriter(VIDEO_DESTINATION + mono_camera.id + ".avi", cv.VideoWriter_fourcc(*'MJPG'),FPS, (V_WIDTH, V_HEIGHT))
     timer = 0
     while True:
         mono_ret, mono_image = mono_camera.read()
@@ -213,7 +213,7 @@ def captureMono(mono_camera, imageDestination=IMAGE_DESTINATION):
     if mono_camera.video_capture.isOpened():
 
         _, mono_image = mono_camera.read()
-        cv2.imwrite(("%s%s_%s.jpeg"%(imageDestination, getCurrentMS(), mono_camera.id)), mono_image) # save image with epoch
+        cv.imwrite(("%s%s_%s.jpeg"%(imageDestination, getCurrentMS(), mono_camera.id)), mono_image) # save image with epoch
     
         mono_camera.stop()
         mono_camera.release()
@@ -227,10 +227,11 @@ def captureStereo(left_camera, right_camera, imageDestination=IMAGE_DESTINATION)
     if left_camera.video_capture.isOpened() and right_camera.video_capture.isOpened():
 
         _, left_image = left_camera.read()
-        cv2.imwrite(("%s%s_%s%s"%(imageDestination, getCurrentMS(), left_camera.id, IMAGE_TYPE)), left_image) # save left image with epoch
+        cv.imwrite(("%s%s_%s%s"%(imageDestination, getCurrentMS(), left_camera.id, IMAGE_TYPE)), left_image) # save left image with epoch
         _, right_image = right_camera.read()
-        cv2.imwrite(("%s%s_%s%s"%(imageDestination, getCurrentMS(), right_camera.id, IMAGE_TYPE)), right_image) # save right image with epoch
-
+        cv.imwrite(("%s%s_%s%s"%(imageDestination, getCurrentMS(), right_camera.id, IMAGE_TYPE)), right_image) # save right image with epoch
+        print("Saved to" + imageDestination)
+        print(os.getcwd())
         
         
         left_camera.stop()

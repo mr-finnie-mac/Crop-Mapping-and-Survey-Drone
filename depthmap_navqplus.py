@@ -1,21 +1,23 @@
 import glob
 import cv2 as cv
-import torch
+# import torch
 import matplotlib.pyplot as plt
+from camera import getCurrentMS
 from config import *
-from PIL import Image
+# from PIL import Image
 import numpy as np
-import time
-import tensorflow as tf
-from keras import layers
-import pandas as pd
+# import time
+# import tensorflow as tf
+# from keras import layers
+# import pandas as pd
 import os
-from keras_pipe import *
+# from keras_pipe import *
 from sous import *
+import concurrent.futures
 
 global debug_show
 debug_show = False
-tf.random.set_seed(123)
+# tf.random.set_seed(123)
 
 pathToImage ='./img_sets/square_dataset/images/'
 exportPath = './outputs/depthmaps/'
@@ -145,49 +147,49 @@ class Depthmap:
         self.wls = filteredDisparity
 
 
-def load_midas_model(model_type):
-    """Load the chosen MiDaS model. Returns loaded transforms, model and device"""
-    midas = torch.hub.load("intel-isl/MiDaS", model_type)
+# def load_midas_model(model_type):
+#     """Load the chosen MiDaS model. Returns loaded transforms, model and device"""
+#     midas = torch.hub.load("intel-isl/MiDaS", model_type)
 
-    # select gpu if it is available
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    midas.to(device)
-    midas.eval()
+#     # select gpu if it is available
+#     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+#     midas.to(device)
+#     midas.eval()
 
-    # load transforms to resize/normalise image depending on the model
-    midas_transforms = torch.hub.load("intel-isl/MiDaS", "transforms")
+#     # load transforms to resize/normalise image depending on the model
+#     midas_transforms = torch.hub.load("intel-isl/MiDaS", "transforms")
 
-    if model_type == "DPT_Hybrid" or model_type == "DPT_Hybrid" or model_type == "MiDaS":
-        transform = midas_transforms.dpt_transform
-    else:
-        transform = midas_transforms.small_transform
+#     if model_type == "DPT_Hybrid" or model_type == "DPT_Hybrid" or model_type == "MiDaS":
+#         transform = midas_transforms.dpt_transform
+#     else:
+#         transform = midas_transforms.small_transform
 
-    return [transform, midas, device]
+#     return [transform, midas, device]
 
 
-def compute_depth_map(transform, midas, device, source_image, file_destination):
-    """Compute the depth map of a given image using MiDaS model. Returns depth map as numpy array (numpy.ndarray)"""
-    # load in the image and convert colour and apply transforms
-    input_image = source_image
-    img = cv.cvtColor(input_image, cv.COLOR_BGR2RGB)
-    input_batch = transform(img).to(device)
+# def compute_depth_map(transform, midas, device, source_image, file_destination):
+#     """Compute the depth map of a given image using MiDaS model. Returns depth map as numpy array (numpy.ndarray)"""
+#     # load in the image and convert colour and apply transforms
+#     input_image = source_image
+#     img = cv.cvtColor(input_image, cv.COLOR_BGR2RGB)
+#     input_batch = transform(img).to(device)
 
-    # predict depth and then resize to the original resolution
-    with torch.no_grad():
-        prediction = midas(input_batch)
+#     # predict depth and then resize to the original resolution
+#     with torch.no_grad():
+#         prediction = midas(input_batch)
 
-        prediction = torch.nn.functional.interpolate(
-            prediction.unsqueeze(1),
-            size=img.shape[:2],
-            mode="bicubic",
-            align_corners=False,
-        ).squeeze()
+#         prediction = torch.nn.functional.interpolate(
+#             prediction.unsqueeze(1),
+#             size=img.shape[:2],
+#             mode="bicubic",
+#             align_corners=False,
+#         ).squeeze()
     
-    output = prediction.cpu().numpy()
-    output = cv.normalize(output, None, 0, 255, norm_type=cv.NORM_MINMAX, dtype=cv.CV_8UC1)
-    cv.imwrite(file_destination, output)
+#     output = prediction.cpu().numpy()
+#     output = cv.normalize(output, None, 0, 255, norm_type=cv.NORM_MINMAX, dtype=cv.CV_8UC1)
+#     cv.imwrite(file_destination, output)
 
-    return output
+#     return output
 
 def blender_specific_depthmap(imgL, imgR, output='./', name=""):
     # imgL = cv.cvtColor(imgL, cv.COLOR_BGR2GRAY)
@@ -421,7 +423,7 @@ def stereo_depthmap_compute_from_path(leftPath="", rightPath="", outputPath="./"
 
     return disparity, filteredDisparity
 
-def stereo_depthmap_compute(leftImage, rightImage, outputPath="./", name="test", debug_show=True, preset=0):
+def stereo_depthmap_compute(leftImage, rightImage, outputPath="./stereo_camera/demo_version/v1/static/depth/", name="test", wls=True ,debug_show=True, preset=5):
 
     grayL = leftImage#cv.cvtColor(leftImage, cv.COLOR_BGR2GRAY)
     grayR = rightImage#cv.cvtColor(rightImage, cv.COLOR_BGR2GRAY)
@@ -429,7 +431,7 @@ def stereo_depthmap_compute(leftImage, rightImage, outputPath="./", name="test",
     # imgR = cv.imread('./active_data/calibration_image_set/stereo_set/right/1679348001680_R.jpeg', cv.IMREAD_GRAYSCALE)
     
     # Reading the mapping values for stereo image rectification
-    cv_file = cv.FileStorage("./STEREO_PARAMS.xml", cv.FILE_STORAGE_READ)
+    cv_file = cv.FileStorage("./STEREO_PARAMS.xml", cv.FILE_STORAGE_READ) # add TARGET_DIR if running manually
     stereoMapL_x = cv_file.getNode("stereoMapL_x").mat()
     stereoMapL_y = cv_file.getNode("stereoMapL_y").mat()
     stereoMapR_x = cv_file.getNode('stereoMapR_x').mat()
@@ -484,6 +486,7 @@ def stereo_depthmap_compute(leftImage, rightImage, outputPath="./", name="test",
     stereo = cv.StereoSGBM_create(minDisparity=minDisp, numDisparities=numDisp, blockSize=blockSize, 
                                   P1=p1, P2=p2, disp12MaxDiff=dispMaxDiff, preFilterCap=prefilCap, 
                                   uniquenessRatio=uniqueRatio, speckleWindowSize=speckWinSize, speckleRange=speckRange)
+    # stereo = cv.StereoSGBM_create(numDisparities=16, blockSize=3)
     disparity = stereo.compute(Left_nice, Right_nice)
 
     leftMatcher = cv.StereoSGBM_create(minDisparity=minDisp, numDisparities=numDisp, blockSize=blockSize, 
@@ -498,48 +501,94 @@ def stereo_depthmap_compute(leftImage, rightImage, outputPath="./", name="test",
     # disparity = stereo.compute(Left_nice, Right_nice)
 
     # leftMatcher = cv.StereoBM_create(numDisparities=96, blockSize=15)
-    rightMatcher = cv.ximgproc.createRightMatcher(leftMatcher)
+    if wls == True:
+        rightMatcher = cv.ximgproc.createRightMatcher(leftMatcher)
 
-    leftDisp = leftMatcher.compute(Left_nice, Right_nice).astype(np.float32)/16
-    rightDisp = rightMatcher.compute(Right_nice, Left_nice).astype(np.float32)/16
+        leftDisp = leftMatcher.compute(Left_nice, Right_nice).astype(np.float32)/16
+        rightDisp = rightMatcher.compute(Right_nice, Left_nice).astype(np.float32)/16
 
-    sigma = 1.5
-    lmbda = 8000.0
+        sigma = 2.25
+        lmbda = 10000.0
 
-    # make WLS filter 
-    wlsFilter = cv.ximgproc.createDisparityWLSFilter(leftMatcher)
-    # wlsFilter = cv.ximgproc.createDisparityWLSFilterGeneric(False)
-    wlsFilter.setLambda(lmbda)
-    wlsFilter.setSigmaColor(sigma)
-    filteredDisparity = wlsFilter.filter(leftDisp,leftImage, disparity_map_right=rightDisp)
-    print("disparity image types (disparity, filtered)")
-    print(type(disparity))
-    print(type(filteredDisparity))
+        # make WLS filter 
+        wlsFilter = cv.ximgproc.createDisparityWLSFilter(leftMatcher)
+        # wlsFilter = cv.ximgproc.createDisparityWLSFilterGeneric(False)
+        wlsFilter.setLambda(lmbda)
+        wlsFilter.setSigmaColor(sigma)
+        disparity = wlsFilter.filter(leftDisp,leftImage, disparity_map_right=rightDisp)
+        # print("disparity image types (disparity, filtered)")
+        # print(type(disparity))
+        # print(type(filteredDisparity))
 
     testName = name
     # save depth image
-    cv.imwrite(("%s%s_%s.png"%(outputPath, "filtered_disparity_image", testName)), filteredDisparity)
+    cv.imwrite(("%s%s_%s.png"%(outputPath, "filtered_disparity_image", getCurrentMS())), disparity)
 
 
-    # display images
-    fig, (ax1, ax2, ax3, ax4) = plt.subplots(nrows=1, ncols=4, figsize=(8, 3),
-                                        sharex=True, sharey=True)
-    for aa in (ax1, ax2, ax3, ax4):
-        aa.set_axis_off()
+    # # display images
+    # fig, (ax1, ax2, ax3, ax4) = plt.subplots(nrows=1, ncols=4, figsize=(8, 3),
+    #                                     sharex=True, sharey=True)
+    # for aa in (ax1, ax2, ax3, ax4):
+    #     aa.set_axis_off()
 
-    if debug_show:
-        ax1.imshow(Left_nice, cmap='gray')
-        ax1.set_title('Left  image')
-        ax2.imshow(Right_nice, cmap='gray')
-        ax2.set_title('Right image')
-        ax3.imshow(disparity, cmap='gray')
-        ax3.set_title('Depth map')
-        ax4.imshow(filteredDisparity, cmap='jet')
-        ax4.set_title('Filtered depthmap (WLS)')
-        plt.savefig("%s%s_%s.jpeg"%(outputPath, "comparison", testName))
-        plt.show()
+    # if debug_show:
+    #     ax1.imshow(Left_nice, cmap='gray')
+    #     ax1.set_title('Left  image')
+    #     ax2.imshow(Right_nice, cmap='gray')
+    #     ax2.set_title('Right image')
+    #     ax3.imshow(disparity, cmap='gray')
+    #     ax3.set_title('Depth map')
+    #     ax4.imshow(filteredDisparity, cmap='jet')
+    #     ax4.set_title('Filtered depthmap (WLS)')
+    #     plt.savefig("%s%s_%s.jpeg"%(outputPath, "comparison", testName))
+    #     plt.show()
 
-    return disparity, filteredDisparity
+    # Apply median filtering
+    disparity = cv.medianBlur(disparity, 3)
+    return disparity
+
+def region_division(image_shape, num_regions):
+    height, width = image_shape[:2]
+    region_height = height // num_regions
+
+    regions = []
+    for i in range(num_regions):
+        y_start = i * region_height
+        y_end = y_start + region_height
+
+        regions.append((0, y_start, width, region_height))
+
+    return regions
+
+def combine_disparity_maps(disparity_maps):
+    # Assuming all disparity maps have the same size
+    first_map = next(disparity_maps)
+    combined_map = np.copy(first_map)
+
+    for disparity_map in disparity_maps:
+        # Combine the disparity maps using a simple averaging approach
+        combined_map = (combined_map + disparity_map) / 2
+
+    return combined_map
+
+def multithread_depthmap(image_left, image_right, outputPath="./stereo_camera/demo_version/v1/static/depth/", name="test", wls=True ,debug_show=True, preset=0):
+     # Define the number of threads to use
+    num_threads = 4
+
+    # Create a thread pool executor with the specified number of threads
+    with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
+        # Divide the images into smaller regions for parallel processing
+        image_regions = [(image_left[y:y+h, x:x+w], image_right[y:y+h, x:x+w])
+                         for (x, y, w, h) in region_division(image_left.shape, num_threads)]
+
+        # Process the image regions in parallel
+        results = executor.map(stereo_depthmap_compute, *zip(*image_regions))
+
+    # Combine the results obtained from different regions
+    final_disparity_map = combine_disparity_maps(results)
+    cv.imwrite(("%s%s_%s.png"%(outputPath, "filtered_disparity_image", name)), final_disparity_map)
+    return final_disparity_map
+     
 
 def depthmap_presets(preset=0):
     if preset == 0: # base
@@ -601,6 +650,18 @@ def depthmap_presets(preset=0):
             minDisp = 5
             p1 = 100
             p2 = 1000
+
+    if preset == 5: # base
+        minDisp = 10
+        numDisp = 48
+        blockSize = 9
+        p1 = 100
+        p2 = 1000
+        dispMaxDiff = 12
+        prefilCap = 5
+        uniqueRatio = 0
+        speckWinSize = 15
+        speckRange = 19
 
     else: # base case
              minDisp = 10
