@@ -280,7 +280,7 @@ def intrinsic_stereo_depthmap_compute(leftImage, rightImage, outputPath = './', 
     output_destination = outputPath
 
     depthmap_presets()
-    stereo = cv.StereoBM_create(48, 15)
+    stereo = cv.StereoBM_create(numDisparities=128, blockSize=29)
     disparity = stereo.compute(imgL_gray,imgR_gray)
 
     cv.imwrite(("%s%s_%s.png"%(output_destination, "disparity_image", name)), disparity)
@@ -662,9 +662,181 @@ def compute_stereo_mission_folder_to_image_and_depth(missionCode, path=IMAGE_DES
         
     return image_list, depth_list
         
+def orbFeats():
+     # Load the left and right images
+    left_image = cv.imread("./active_data/1686088328416_L.jpeg", cv.IMREAD_GRAYSCALE)
+    right_image = cv.imread("./active_data/1686088328429_R.jpeg", cv.IMREAD_GRAYSCALE)
 
+    # Create an ORB object
+    orb = cv.ORB_create(nfeatures=10000, scaleFactor=1.5, patchSize=100, edgeThreshold=10, nlevels=8)
 
+    # Detect and compute ORB keypoints and descriptors for the left image
+    keypoints1, descriptors1 = orb.detectAndCompute(left_image, None)
+
+    # Detect and compute ORB keypoints and descriptors for the right image
+    keypoints2, descriptors2 = orb.detectAndCompute(right_image, None)
+
+    # Create a brute force matcher
+    bf_matcher = cv.BFMatcher(cv.NORM_HAMMING, crossCheck=True)
+
+    # Match keypoints
+    matches = bf_matcher.match(descriptors1, descriptors2)
+
+    # Sort matches by distance
+    matches = sorted(matches, key=lambda x: x.distance)
+    matching_result = cv.drawMatches(left_image, keypoints1, right_image, keypoints2, matches, None, flags=cv.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+
+    # Convert keypoints to numpy arrays
+    points1 = np.float32([keypoints1[match.queryIdx].pt for match in matches])
+    points2 = np.float32([keypoints2[match.trainIdx].pt for match in matches])
+
+    # Calculate disparity as the x-coordinate difference
+    disparity = points1[:, 0] - points2[:, 0]
+
+    # Reshape disparity into a 2D map
+    height, width = left_image.shape
+    depth_map = np.zeros((height, width), dtype=np.uint8)
+    depth_map[np.int32(points1[:, 1]), np.int32(points1[:, 0])] = disparity.astype(np.uint8)
+
+    # Normalize the depth map for visualization
+    depth_map_normalised = cv.normalize(depth_map, None, alpha=0, beta=255, norm_type=cv.NORM_MINMAX, dtype=cv.CV_8U)
+    # depth_map = cv.medianBlur(depth_map, ksize=5)
+    cv.imwrite('output_disparity_map_orb.jpg', depth_map)
+    # Display the depth map
+    cv.imshow("Matching Result", matching_result)
+    cv.imshow("Depth Map normalised", depth_map_normalised)
+    cv.imshow("Depth Map", depth_map)
+    cv.waitKey(0)
+    cv.destroyAllWindows()
+    # Draw top matches
     
+
+    # # Display the matching result
+    cv.imshow("Matching Result", matching_result)
+    # cv.waitKey(0)
+    # cv.destroyAllWindows()
+
+def testingDepthMaps():
+    left_image = cv.imread("./active_data/1686068085808_L.jpeg")  # Read the left image as grayscale
+    right_image = cv.imread("./active_data/1686068085812_R.jpeg")  # Read the right image as grayscale
+    Left_nice = left_image
+    Right_nice = right_image
+    # right_image = cv.imread("./active_data/1686068085812_R.jpeg")
+
+    # Check image dimensions
+    # print(right_image.shape)
+
+    # Display the image
+    # cv.imshow("Image", right_image)
+    # cv.waitKey(0)
+    # cv.destroyAllWindows()
+    # Reading the mapping values for stereo image rectification
+    # cv_file = cv.FileStorage("./STEREO_PARAMS.xml", cv.FILE_STORAGE_READ)
+    # stereoMapL_x = cv_file.getNode("stereoMapL_x").mat()
+    # stereoMapL_y = cv_file.getNode("stereoMapL_y").mat()
+    # stereoMapR_x = cv_file.getNode('stereoMapR_x').mat()
+    # stereoMapR_y = cv_file.getNode('stereoMapR_y').mat()
+    # cv_file.release()
+
+    # # Applying stereo image rectification on the left image
+    # Left_nice= cv.remap(left_image,
+    #         stereoMapL_x,
+    #         stereoMapL_y,
+    #         cv.INTER_LANCZOS4,
+    #         cv.BORDER_CONSTANT,
+    #         0)
+    
+    # # Applying stereo image rectification on the right image
+    # Right_nice= cv.remap(right_image,
+    #         stereoMapR_x,
+    #         stereoMapR_y,
+    #         cv.INTER_LANCZOS4,
+    #         cv.BORDER_CONSTANT,
+    #         0)
+    
+    # Create an ORB object
+    orb = cv.ORB_create()
+
+    # Detect and compute ORB keypoints and descriptors for both images
+    keypoints1, descriptors1 = orb.detectAndCompute(Left_nice, None)
+    keypoints2, descriptors2 = orb.detectAndCompute(Right_nice, None)
+
+    # Create a brute force matcher
+    bf_matcher = cv.BFMatcher(cv.NORM_HAMMING, crossCheck=True)
+
+    # Match keypoints
+    matches = bf_matcher.match(descriptors1, descriptors2)
+
+    # Extract matched keypoints
+    matched_keypoints1 = np.float32([keypoints1[match.queryIdx].pt for match in matches])
+    matched_keypoints2 = np.float32([keypoints2[match.trainIdx].pt for match in matches])
+
+    # Calculate disparity from matched keypoints
+    disparity_map = (matched_keypoints1[:, 0] - matched_keypoints2[:, 0]).reshape(-1, 1)
+    disparity_map_rgb = cv.cvtColor(disparity_map, cv.COLOR_GRAY2RGB)
+
+    # Post-process the disparity map (optional)
+    # Apply filtering, smoothing, or scaling operations as needed
+    cv.imwrite('output_disparity_map_orb.jpg', disparity_map)
+
+    # Display the depth map
+    # display images
+    cv.imshow("Left image", Right_nice)
+    cv.imshow("Right image", Left_nice)
+    cv.imshow("Depth image", disparity_map_rgb)
+
+    fig, (ax1, ax2, ax3) = plt.subplots(nrows=1, ncols=3, figsize=(8, 3),
+                                        sharex=True, sharey=True)
+    for aa in (ax1, ax2, ax3):
+        aa.set_axis_off()
+
+    ax1.imshow(left_image, cmap='gray')
+    ax1.set_title('Left image')
+    ax2.imshow(right_image, cmap='gray')
+    ax2.set_title('Right image')
+    ax3.imshow(disparity_map_rgb)
+    ax3.set_title('Depth map')
+    # plt.savefig(("%s%s_%s.jpeg"%(output_destination, "comparison", name)))
+    plt.show()
+    
+    cv.waitKey(0)
+    cv.destroyAllWindows()
+   
+
+    # # Initialize the SGBM parameters
+    # min_disparity = 0
+    # num_disparities = 16
+    # block_size = 15
+    # uniqueness_ratio = 10
+    # speckle_window_size = 100
+    # speckle_range = 32
+
+    # # Create the SGBM object
+    # stereo = cv.StereoSGBM_create(minDisparity=min_disparity,
+    #                             numDisparities=num_disparities,
+    #                             blockSize=block_size,
+    #                             uniquenessRatio=uniqueness_ratio,
+    #                             speckleWindowSize=speckle_window_size,
+    #                             speckleRange=speckle_range)
+
+    # # Compute the disparity map
+    # disparity_map = stereo.compute(left_image, right_image)
+    # # Create the WLS filter object
+    # wls_filter = cv.ximgproc.createDisparityWLSFilter(stereo)
+
+    # # Set the lambda and sigma values (adjust as needed)
+    # lambda_val = 80000
+    # sigma_val = 1.5
+    # wls_filter.setLambda(lambda_val)
+    # wls_filter.setSigmaColor(sigma_val)
+    # # Apply the WLS filter
+    # filtered_disparity_map = wls_filter.filter(disparity_map, left_image, None, right_image)
+    # filtered_disparity_map = cv.normalize(filtered_disparity_map, filtered_disparity_map, alpha=255, beta=0,
+    #                                     norm_type=cv.NORM_MINMAX, dtype=cv.CV_8U)
+    
+    # cv.imwrite('output_disparity_map.jpg', filtered_disparity_map)
+
+
 
         
 
@@ -673,6 +845,12 @@ if __name__ == "__main__":
     # stereo_depthmap_compute(leftPath='./active_data/images/guitar_L.jpeg', rightPath='./active_data/images/guitar_R.jpeg', outputPath="./active_data/", name="test5")
     # compute_stereo_mission_folder_to_image_and_depth(missionCode="fins room", path="./active_data/", sgbm_preset=0)
     # intrinsic_stereo_depthmap_compute()
+
+
+    # orbFeats()
+    # testingDepthMaps()
+
+
     srcL = ("./blender/older_images/left2.png")
     srcR = ("./blender/older_images/right2.png")
     # srcL = cv.imread("./blender/older_images/left2.png")
@@ -686,7 +864,7 @@ if __name__ == "__main__":
     d.matrices.makeMatrices()
     print(d.matrices.stereoMapL_x)
 
-    d.generate_depthmap()
+    # d.generate_depthmap()
     
 
     # stereo_depthmap_compute(leftPath='./active_data/images/tree1_L.jpeg', rightPath='./active_data/images/tree1_R.jpeg', outputPath="./active_data/", name="test6")

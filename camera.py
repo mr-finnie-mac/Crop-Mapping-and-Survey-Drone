@@ -230,8 +230,7 @@ def captureStereo(left_camera, right_camera, imageDestination=IMAGE_DESTINATION)
         cv.imwrite(("%s%s_%s%s"%(imageDestination, getCurrentMS(), left_camera.id, IMAGE_TYPE)), left_image) # save left image with epoch
         _, right_image = right_camera.read()
         cv.imwrite(("%s%s_%s%s"%(imageDestination, getCurrentMS(), right_camera.id, IMAGE_TYPE)), right_image) # save right image with epoch
-        print("Saved to" + imageDestination)
-        print(os.getcwd())
+        print("Stereo images Written to " +  os.getcwd()+imageDestination)
         
         
         left_camera.stop()
@@ -304,6 +303,23 @@ def inflight_stereo_procedure(left_camera, right_camera, missionCode=getCurrentM
             if time.perf_counter() >= end_time and duration != 0:
                 print("Stopping inflight stereo procedure, timer has expired (%ds)"%(duration))
                 break
+def live_feed(left_camera, right_camera, missionCode=getCurrentMS(), duration=0, path="./"):
+    """Make a sequence of stereo captures, inflight. Interupt this capture sequence by setting the END_CAPTURE to 1."""
+    captureCounter = 0
+    # newPath = IMAGE_DESTINATION + "/missions/" + missionCode + STEREO_OUT
+    # os.makedirs(newPath, exist_ok=True)
+    start_time = time.perf_counter()
+    end_time = start_time + duration
+    print("Starting inflight stereo procedure")
+    while END_CAPTURE == 0:
+            captureCounter = captureCounter + 1
+            print("CAPTURING STEREO IMAGE  No.  %d"% (captureCounter))
+            runStereoCamera(left_camera, right_camera)
+            left, right = captureStereo(left_camera, right_camera, imageDestination=TARGET_DIR+"/static/")
+            time.sleep(CAPTURE_FREQ) # wait x seconds before next stereo image is captured
+            if time.perf_counter() >= end_time and duration != 0:
+                print("Stopping inflight stereo procedure, timer has expired (%ds)"%(duration))
+                break
 
 def make_new_capture_folder(missionCode):
     "Build a folder tree for storing the image data for a new mission"
@@ -368,6 +384,7 @@ if __name__ == "__main__":
     right_camera.cameraInfo()
     
     path, missionCode = make_new_capture_folder(getCurrentMS())
-    inflight_stereo_procedure(left_camera, right_camera, missionCode=missionCode, duration=150) # make 2.5 min long capture procedure with folder name being current ms
+    # inflight_stereo_procedure(left_camera, right_camera, missionCode=missionCode, duration=150) # make 2.5 min long capture procedure with folder name being current ms
+    live_feed(left_camera=left_camera, right_camera=right_camera, duration=30)
 
 

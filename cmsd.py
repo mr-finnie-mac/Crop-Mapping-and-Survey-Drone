@@ -13,7 +13,7 @@ if __name__ == '__main__':
         runStereoCamera(left_camera,right_camera)
         left, right = captureStereo(left_camera, right_camera, imageDestination="./stereo_camera/demo_version/v1/static/")
 
-        stereo_depthmap_compute(leftImage=left, rightImage=right, preset=1, wls=True, outputPath="./stereo_camera/demo_version/v1/static/depth/")
+        # stereo_depthmap_compute(leftImage=left, rightImage=right, preset=1, wls=True, outputPath="./stereo_camera/demo_version/v1/static/depth/")
         
         # multithread_depthmap(image_left=left, image_right=right, preset=5, wls=True, outputPath="./stereo_camera/demo_version/v1/static/depth/")
 

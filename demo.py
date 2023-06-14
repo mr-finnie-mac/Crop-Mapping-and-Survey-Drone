@@ -551,7 +551,7 @@ def custom_draw_geometry_with_rotation(pcd):
 
     def rotate_view(vis):
         ctr = vis.get_view_control()
-        ctr.rotate(8.0, 0.0)
+        ctr.rotate(4.0, 0.0)
         return False
 
     o3d.visualization.draw_geometries_with_animation_callback(pcd,
@@ -776,77 +776,69 @@ def get_file_paths(directory):
             file_paths.append(file_path)
     return file_paths
 
-if __name__ == "__main__":
-    # pcdPath = 'blender/blender-models/alt/blendercrops_alt.ply'
+def show_pcd():
     pcdPath = 'blender/blender-models/alt/disected/'
-    # pcd = PointCloud("rgbd", "blender_alt", 21052023)
-    # pcd.reverseScale()
-    # pcd.conditionPointcloud(True)
-    # observe_pointcloud(pcd.cloud)
     srcL = cv.imread("./blender/images/left.png")
     srcR = cv.imread("./blender/images/right.png")
-    # dp = intrinsic_stereo_depthmap_compute("./blender/images/left.png", "./blender/images/right.png", name="blender-overhead")
+    
     make_rgbd("./blender/images/right.png", "./disparity_image_blender-overhead.png")
     blend = PointCloud(None,"blender-og", 2)
-    # depthmap = cv.imread("./outputs/depthmaps/disparity_image_blender-og.png")
-    # srcL = cv.imread("./blender/older_images/left2.png")
+   
     depthmap = cv.imread("./disparity_image_blender-overhead.png")
     srcL = cv.imread("./blender/images/left.png")
-    # depthmap = cv.imread("./output_disparity_map_orb.jpg")
-    # srcL = cv.imread("./active_data/1686068085808_L.jpeg")
 
     blend.depthmap = depthmap
     blend.colour  = srcL
     blend.makeRGBD(False, depthmap=depthmap)
-    # observe_pointcloud(convert_to_ply(blend.rgbd))
+
     blend.cloud = convert_to_ply(blend.rgbd)
 
-    # blend.generate()
     blend.conditionPointcloud(useDepthShift=True)
-    # blend.observeCloud()
+
     blend.downsample()
     blend.observeCloud()
     blend.cloud = cluster_statistical_outlier_removal(blend.cloud, True)
     
     clusters = pointcloud_clustering_segmentation(blend.cloud)
     visualise_segmented_pointcloud_list(clusters)
-    # observe_pointcloud(pointcloud_clustering_segmentation(blend.cloud))
+
+    return clusters
+
+def show_blender_pcd(pcd):
+    # pcdPath = 'blender/blender-models/alt/disected/'
+    # srcL = cv.imread("./blender/images/left.png")
+    # srcR = cv.imread("./blender/images/right.png")
     
-    # pointcloud_clustering_basic(blend.cloud)
+    # make_rgbd("./blender/images/right.png", "./disparity_image_blender-overhead.png")
+    blend = PointCloud(None,"blender-og", 2)
+   
+    # depthmap = cv.imread("./disparity_image_blender-overhead.png")
+    # srcL = cv.imread("./blender/images/left.png")
 
-    crop = Crop(112358, "blender_alt")
-    pcd = PointCloud("rgbd", "blender_alt", 112358)
-    pcd.loadFile('blender/blender-models/normal/blendercrops_normal.ply')
-    crop.setPointcloud(pcd.cloud)
+    # blend.depthmap = depthmap
+    # blend.colour  = srcL
+    # blend.makeRGBD(False, depthmap=depthmap)
 
-    crop.measureBounds()
-    print(crop.bounds)
-    crop.measureHeight()
-    print(crop.height)
-    crop.getPosition()
-    print(crop.position)
+    blend.cloud = pcd
 
-    # crop2 = Crop(112358, "blender_alt")
-    # pcd2 = PointCloud("rgbd", "blender_alt", 112358)
-    # pcd2.loadFile('blender/blender-models/alt/disected/blendercrops_alt_003.ply')
-    # crop2.setPointcloud(pcd2.cloud)
+    blend.conditionPointcloud(useDepthShift=True)
 
+    blend.downsample()
+    blend.observeCloud()
+    blend.cloud = cluster_statistical_outlier_removal(blend.cloud, True)
+    
+    clusters = pointcloud_clustering_segmentation(blend.cloud)
+    visualise_segmented_pointcloud_list(clusters)
 
-    # crop2.measureBounds()
-    # print(crop2.bounds)
-    # crop2.measureHeight()
-    # print(crop2.height)
-    # crop2.getPosition()
-    # print(crop2.position)
+    return clusters
+    
 
+if __name__ == "__main__":
+
+    clusters = show_pcd()
+    
     analysis = PointcloudAnalysis(112358, "blender_normal")
     this_pcd = PointCloud("rgbd", "blender_", 112358)
-    # Create a visualizer object
-    
-    font = 0  # 0: normal, 1: bold
-    font_size = 10
-    color = (1, 0, 0)  # Red color
-    position = (0, 0)  # Text position
     
     for cluster in clusters:
         crop = Crop(112358, "blender_normal")
@@ -867,30 +859,33 @@ if __name__ == "__main__":
     print(analysis.density)
     print(analysis.average_height)
     o3d.visualization.draw_geometries(clusters)
+    # pointcloud_clustering_basic(blend.cloud)
+
+    crop = Crop(112358, "blender_norm")
+    pcd = PointCloud("rgbd", "blender_norm", 112358)
+    pcd.loadFile('blender/blender-models/normal/blendercrops_normal.ply')
+    # pcd.loadFile('blender/blender-models/blender_newcrops_alt_new.ply')
+    crop.setPointcloud(pcd.cloud)
+    custom_draw_geometry_with_rotation(pcd=[pcd.cloud])
+    DBSCAN_EPS = 0.0157
+    show_blender_pcd(pcd.cloud)
+
+
+    # crop2 = Crop(112358, "blender_alt")
+    # pcd2 = PointCloud("rgbd", "blender_alt", 112358)
+    # pcd2.loadFile('blender/blender-models/alt/disected/blendercrops_alt_003.ply')
+    # crop2.setPointcloud(pcd2.cloud)
+
+
+    # crop2.measureBounds()
+    # print(crop2.bounds)
+    # crop2.measureHeight()
+    # print(crop2.height)
+    # crop2.getPosition()
+    # print(crop2.position)
+
     
-    file_paths = get_file_paths(pcdPath)
-    pcdList = []
-    # Print the file paths
-    for file_path in file_paths:
-        pcd = PointCloud("rgbd", "blender_alt", 21052023)
-        pcd.loadFile(file_path)
-        pcd.reverseScale()
-        pcd.conditionPointcloud(True)
-        pcd.downsample()
-        # observe_pointcloud(pcd.cloud)
-        pcdList.append(pcd.cloud)
-        pcds = PointcloudSet(21052023, "blender_alt")
-
-    pcds.addPointclouds(pcdList)
-    print(pcds.set)
-    print(pcds.set[0])
-
-    pcds.alignMembersICP()
-    observe_pointcloud(pcds.map)
-
-    pcds.findCropsDBSCAN()
-
-    observe_pointcloud(pcds.observeCrops())
+    
 
 
 

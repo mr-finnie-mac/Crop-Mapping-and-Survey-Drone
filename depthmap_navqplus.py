@@ -423,7 +423,7 @@ def stereo_depthmap_compute_from_path(leftPath="", rightPath="", outputPath="./"
 
     return disparity, filteredDisparity
 
-def stereo_depthmap_compute(leftImage, rightImage, outputPath="./stereo_camera/demo_version/v1/static/depth/", name="test", wls=True ,debug_show=True, preset=5):
+def stereo_depthmap_compute(leftImage, rightImage, outputPath="./stereo_camera/demo_version/v1/static/depth/", name="test", wls=True ,debug_show=True, preset=5, sigma = 1.5, lmbda = 8000.0, post_filter=0):
 
     grayL = leftImage#cv.cvtColor(leftImage, cv.COLOR_BGR2GRAY)
     grayR = rightImage#cv.cvtColor(rightImage, cv.COLOR_BGR2GRAY)
@@ -487,7 +487,12 @@ def stereo_depthmap_compute(leftImage, rightImage, outputPath="./stereo_camera/d
                                   P1=p1, P2=p2, disp12MaxDiff=dispMaxDiff, preFilterCap=prefilCap, 
                                   uniquenessRatio=uniqueRatio, speckleWindowSize=speckWinSize, speckleRange=speckRange)
     # stereo = cv.StereoSGBM_create(numDisparities=16, blockSize=3)
+    #  stereo = cv.StereoBM_create(48, 15)
+    left_gray = cv.cvtColor(Left_nice, cv.COLOR_BGR2GRAY)
+    right_gray = cv.cvtColor(Right_nice, cv.COLOR_BGR2GRAY)
+    disparity = stereo.compute(left_gray, right_gray)
     disparity = stereo.compute(Left_nice, Right_nice)
+    # disparity = cv.normalize(disparity, None, 0, 255, norm_type=cv.NORM_MINMAX, dtype=cv.CV_8UC1)
 
     leftMatcher = cv.StereoSGBM_create(minDisparity=minDisp, numDisparities=numDisp, blockSize=blockSize, 
                                   P1=p1, P2=p2, disp12MaxDiff=dispMaxDiff, preFilterCap=prefilCap, 
@@ -507,8 +512,8 @@ def stereo_depthmap_compute(leftImage, rightImage, outputPath="./stereo_camera/d
         leftDisp = leftMatcher.compute(Left_nice, Right_nice).astype(np.float32)/16
         rightDisp = rightMatcher.compute(Right_nice, Left_nice).astype(np.float32)/16
 
-        sigma = 2.25
-        lmbda = 10000.0
+        # sigma = 2.25
+        # lmbda = 10000.0
 
         # make WLS filter 
         wlsFilter = cv.ximgproc.createDisparityWLSFilter(leftMatcher)
@@ -520,7 +525,19 @@ def stereo_depthmap_compute(leftImage, rightImage, outputPath="./stereo_camera/d
         # print(type(disparity))
         # print(type(filteredDisparity))
 
-    testName = name
+    if post_filter == 1:
+         disparity = cv.medianBlur(disparity, 3)
+    if post_filter == 2:
+         disparity = cv.medianBlur(disparity, 5)
+    if post_filter == 3:
+         disparity = cv.medianBlur(disparity, 7)
+    if post_filter == 4:
+        disparity = cv.bilateralFilter(disparity, 10, 10, 20)
+    # if post_filter == 5:
+        #  disparity = cv.threshold(disparity, 10, 100, threshold_type)[1]
+
+
+    
     # save depth image
     cv.imwrite(("%s%s_%s.png"%(outputPath, "filtered_disparity_image", getCurrentMS())), disparity)
 
@@ -543,8 +560,6 @@ def stereo_depthmap_compute(leftImage, rightImage, outputPath="./stereo_camera/d
     #     plt.savefig("%s%s_%s.jpeg"%(outputPath, "comparison", testName))
     #     plt.show()
 
-    # Apply median filtering
-    disparity = cv.medianBlur(disparity, 3)
     return disparity
 
 def region_division(image_shape, num_regions):
@@ -651,7 +666,7 @@ def depthmap_presets(preset=0):
             p1 = 100
             p2 = 1000
 
-    if preset == 5: # base
+    elif preset == 5: # base
         minDisp = 10
         numDisp = 48
         blockSize = 9
@@ -662,6 +677,78 @@ def depthmap_presets(preset=0):
         uniqueRatio = 0
         speckWinSize = 15
         speckRange = 19
+
+    elif preset == 6:  # preset 6
+        minDisp = 8
+        numDisp = 64
+        blockSize = 7
+        p1 = 200
+        p2 = 1500
+        dispMaxDiff = 15
+        prefilCap = 8
+        uniqueRatio = 1
+        speckWinSize = 15
+        speckRange = 25
+
+    elif preset == 7:
+        minDisp = 8
+        numDisp = 64
+        blockSize = 9
+        p1 = 200
+        p2 = 1500
+        dispMaxDiff = 25
+        prefilCap = 8
+        uniqueRatio = 3
+        speckWinSize = 29
+        speckRange = 25
+
+    elif preset == 8:
+        minDisp = 0
+        numDisp = 128
+        blockSize = 3
+        p1 = 8 * 3 * blockSize ** 2
+        p2 = 32 * 3 * blockSize ** 2
+        dispMaxDiff = 1
+        uniqueRatio = 10
+        speckWinSize = 100
+        speckRange = 32
+        prefilCap = 63
+
+    elif preset == 9:
+        minDisp = 0
+        numDisp = 8
+        blockSize = 5
+        p1 = 100 #8 * 3 * blockSize ** 2
+        p2 = 1000 #32 * 3 * blockSize ** 2
+        dispMaxDiff = -1
+        uniqueRatio = 15
+        speckWinSize = 0
+        speckRange = 0
+        prefilCap = 31
+    
+    elif preset == 10: # new preset
+        minDisp = 30
+        numDisp = 96
+        blockSize = 11
+        p1 = 100
+        p2 = 1000
+        dispMaxDiff = 12
+        prefilCap = 15
+        uniqueRatio = 0
+        speckWinSize = 19
+        speckRange = 33
+        # minDisp = 40#20
+        # numDisp = 96
+        # blockSize = 15
+        # p1 = 50
+        # p2 = 500
+        # dispMaxDiff = 12
+        # prefilCap = 20
+        # uniqueRatio = 1
+        # speckWinSize = 25
+        # speckRange = 50
+
+
 
     else: # base case
              minDisp = 10
